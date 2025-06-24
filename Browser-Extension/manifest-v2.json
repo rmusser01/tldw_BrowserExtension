@@ -1,0 +1,60 @@
+{
+  "manifest_version": 2,
+  "name": "TLDW Server Extension",
+  "version": "1.0.0",
+  "description": "Browser extension for TLDW (Too Long; Didn't Watch) Server - AI chat integration with various LLM models",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tldw-server-extension@example.com",
+      "strict_min_version": "78.0"
+    }
+  },
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "activeTab",
+    "tabs",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["js/browser-polyfill.js", "js/background-v2.js"],
+    "persistent": false
+  },
+  "browser_action": {
+    "default_popup": "html/popup.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["js/browser-polyfill.js", "js/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "options_page": "html/options.html",
+  "commands": {
+    "open-popup": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+T",
+        "mac": "Command+Shift+T"
+      },
+      "description": "Open TLDW popup"
+    },
+    "capture-selection": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+C",
+        "mac": "Command+Shift+C"
+      },
+      "description": "Capture selected text"
+    }
+  }
+}

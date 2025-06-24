@@ -1,3 +1,8 @@
+/**
+ * TLDW API Client
+ * Handles all communication with the TLDW Server API
+ * Includes retry logic, caching, and connection monitoring
+ */
 class TLDWApiClient {
   constructor() {
     this.configManager = window.configManager || null;
@@ -25,6 +30,10 @@ class TLDWApiClient {
     }
   }
 
+  /**
+   * Initialize the API client with configuration
+   * @returns {Promise<void>}
+   */
   async init() {
     try {
       // Use config manager if available, otherwise fallback to storage
@@ -85,6 +94,11 @@ class TLDWApiClient {
     return this.configManager ? this.configManager.getApiTimeout() : 30000;
   }
 
+  /**
+   * Check connection to the TLDW server
+   * @param {boolean} [withRetry=false] - Whether to retry on failure
+   * @returns {Promise<boolean>} True if connected, false otherwise
+   */
   async checkConnection(withRetry = false) {
     this.connectionStatus.lastChecked = new Date();
     
@@ -110,7 +124,7 @@ class TLDWApiClient {
       console.error('Connection check failed:', error);
       this.updateConnectionStatus(false, error);
       
-      if (withRetry && this.connectionStatus.consecutiveFailures < this.retryConfig.maxRetries) {
+      if (withRetry && this.connectionStatus.consecutiveFailures < this.getRetryConfig().maxRetries) {
         const delay = this.calculateRetryDelay(this.connectionStatus.consecutiveFailures);
         await this.sleep(delay);
         return this.checkConnection(true);
@@ -124,66 +138,26 @@ class TLDWApiClient {
     const headers = {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
-      'Cache-Control': 'no-cache',
-      'X-Requested-With': 'XMLHttpRequest',
       ...additionalHeaders
     };
     
     // Add API token if available
     if (this.apiToken) {
-      const apiKeyHeader = this.configManager ? 
-        this.configManager.get('apiKeyHeader', 'Authorization') : 
-        'Authorization';
-      headers[apiKeyHeader] = `Bearer ${this.apiToken}`;
+      // Use Token header as per TLDW API spec
+      headers['Token'] = `Bearer ${this.apiToken}`;
     }
-    
-    // Add security headers
-    if (this.configManager && this.configManager.get('enableCORS', true)) {
-      headers['Access-Control-Request-Method'] = 'GET, POST, PUT, DELETE, OPTIONS';
-      headers['Access-Control-Request-Headers'] = 'Content-Type, Authorization, X-Requested-With';
-    }
-    
-    // Add user agent for identification
-    headers['User-Agent'] = this.getUserAgent();
-    
-    // Add request ID for tracking
-    headers['X-Request-ID'] = this.generateRequestId();
     
     return headers;
   }
   
-  getUserAgent() {
-    const extensionVersion = this.getExtensionVersion();
-    const browserInfo = this.getBrowserInfo();
-    return `TLDW-Extension/${extensionVersion} (${browserInfo})`;
-  }
-  
-  getExtensionVersion() {
-    try {
-      const manifest = chrome.runtime.getManifest();
-      return manifest.version || '1.0.0';
-    } catch (error) {
-      return '1.0.0';
-    }
-  }
-  
-  getBrowserInfo() {
-    const isChrome = typeof chrome !== 'undefined';
-    const isFirefox = typeof browser !== 'undefined';
-    
-    if (isChrome) {
-      return `Chrome/${navigator.userAgent.match(/Chrome\/([0-9.]+)/)?.[1] || 'Unknown'}`;
-    } else if (isFirefox) {
-      return `Firefox/${navigator.userAgent.match(/Firefox\/([0-9.]+)/)?.[1] || 'Unknown'}`;
-    } else {
-      return 'Unknown Browser';
-    }
-  }
-  
-  generateRequestId() {
-    return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  }
 
+  /**
+   * Make an API request with retry logic and caching
+   * @param {string} endpoint - The API endpoint
+   * @param {Object} [options={}] - Request options (method, body, headers)
+   * @returns {Promise<*>} The API response
+   * @throws {Error} Enhanced error with category and user message
+   */
   async request(endpoint, options = {}) {
     if (!this.initialized) {
       await this.init();
@@ -249,11 +223,6 @@ class TLDWApiClient {
 
   async requestWithRetry(url, config, endpoint, attempt = 0) {
     try {
-      // Handle CORS preflight for complex requests
-      if (this.needsPreflightRequest(config)) {
-        await this.sendPreflightRequest(url, config);
-      }
-      
       const response = await fetch(url, config);
       
       // Enhanced error handling for different types of failures
@@ -288,48 +257,6 @@ class TLDWApiClient {
     }
   }
   
-  // CORS and Security Helper Methods
-  needsPreflightRequest(config) {
-    const method = config.method || 'GET';
-    const complexMethods = ['PUT', 'DELETE', 'PATCH'];
-    
-    // Check if request needs preflight
-    if (complexMethods.includes(method.toUpperCase())) {
-      return true;
-    }
-    
-    // Check for custom headers that trigger preflight
-    const headers = config.headers || {};
-    const preflightHeaders = ['Authorization', 'X-API-Key', 'X-Requested-With'];
-    
-    return preflightHeaders.some(header => 
-      Object.keys(headers).some(h => h.toLowerCase() === header.toLowerCase())
-    );
-  }
-  
-  async sendPreflightRequest(url, config) {
-    try {
-      const preflightConfig = {
-        method: 'OPTIONS',
-        headers: {
-          'Access-Control-Request-Method': config.method || 'GET',
-          'Access-Control-Request-Headers': Object.keys(config.headers || {}).join(', '),
-          'Origin': window.location.origin
-        }
-      };
-      
-      const response = await fetch(url, preflightConfig);
-      
-      if (!response.ok) {
-        console.warn('CORS preflight failed:', response.status);
-      }
-      
-      return response;
-    } catch (error) {
-      console.warn('CORS preflight error:', error);
-      // Don't throw here - let the main request proceed
-    }
-  }
   
   async parseErrorResponse(response) {
     try {
@@ -381,6 +308,13 @@ class TLDWApiClient {
   }
   
   async parseSuccessResponse(response) {
+    // Validate response size
+    const contentLength = response.headers.get('content-length');
+    const maxSize = 50 * 1024 * 1024; // 50MB limit
+    if (contentLength && parseInt(contentLength) > maxSize) {
+      throw new Error(`Response too large: ${contentLength} bytes exceeds ${maxSize} byte limit`);
+    }
+    
     const contentType = response.headers.get('content-type');
     
     try {
@@ -458,28 +392,12 @@ class TLDWApiClient {
     return !errorCategory || retryableCategories.includes(errorCategory);
   }
 
-  shouldRetryOld(error, attempt) {
-    const retryConfig = this.getRetryConfig();
-    if (attempt >= retryConfig.maxRetries) {
-      return false;
-    }
-    
-    // Retry on network errors, timeouts, and 5xx status codes
-    if (error.name === 'TypeError' || error.message.includes('Failed to fetch')) {
-      return true;
-    }
-    
-    if (error.message.includes('HTTP 5')) {
-      return true;
-    }
-    
-    return false;
-  }
 
   calculateRetryDelay(attempt) {
     // Exponential backoff with jitter
-    const baseDelay = this.retryConfig.baseDelay;
-    const exponential = Math.min(baseDelay * Math.pow(2, attempt), this.retryConfig.maxDelay);
+    const retryConfig = this.getRetryConfig();
+    const baseDelay = retryConfig.baseDelay;
+    const exponential = Math.min(baseDelay * Math.pow(2, attempt), retryConfig.maxDelay);
     const jitter = Math.random() * 0.3 * exponential;
     return Math.floor(exponential + jitter);
   }
@@ -523,7 +441,7 @@ class TLDWApiClient {
   }
 
   isCacheable(endpoint) {
-    return this.cacheConfig.cachableEndpoints.some(cachableEndpoint => 
+    return this.getCacheConfig().cachableEndpoints.some(cachableEndpoint => 
       endpoint.startsWith(cachableEndpoint)
     );
   }
