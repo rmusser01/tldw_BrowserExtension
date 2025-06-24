@@ -142,6 +142,16 @@ async function buildChromeV3() {
   logProgress('Building Chrome V3 extension...');
   
   try {
+    // Validate required files exist
+    const requiredFiles = ['manifest.json', 'js/background.js'];
+    for (const file of requiredFiles) {
+      try {
+        await fs.access(file);
+      } catch (error) {
+        throw new Error(`Required file missing: ${file}`);
+      }
+    }
+    
     // Copy common files
     await copyCommonFiles(CHROME_V3_DIR);
     
@@ -165,6 +175,13 @@ async function buildChromeV2() {
   logProgress('Building Chrome V2 extension...');
   
   try {
+    // Validate required files exist
+    try {
+      await fs.access('manifest-v2.json');
+    } catch (error) {
+      throw new Error('Required file missing: manifest-v2.json');
+    }
+    
     // Copy common files
     await copyCommonFiles(CHROME_V2_DIR);
     
@@ -185,6 +202,13 @@ async function buildFirefox() {
   logProgress('Building Firefox extension...');
   
   try {
+    // Validate required files exist
+    try {
+      await fs.access('manifest-v2.json');
+    } catch (error) {
+      throw new Error('Required file missing: manifest-v2.json');
+    }
+    
     // Copy common files
     await copyCommonFiles(FIREFOX_DIR);
     
@@ -301,12 +325,27 @@ async function build() {
     // Run build steps
     await cleanBuildDir();
     
-    // Build all versions in parallel
-    await Promise.all([
-      buildChromeV3(),
-      buildChromeV2(),
-      buildFirefox()
-    ]);
+    // Build all versions sequentially to handle errors properly
+    const buildTasks = [
+      { name: 'Chrome V3', fn: buildChromeV3 },
+      { name: 'Chrome V2', fn: buildChromeV2 },
+      { name: 'Firefox', fn: buildFirefox }
+    ];
+    
+    const failedBuilds = [];
+    
+    for (const { name, fn } of buildTasks) {
+      try {
+        await fn();
+      } catch (error) {
+        console.error(`❌ ${name} build failed: ${error.message}`);
+        failedBuilds.push(name);
+      }
+    }
+    
+    if (failedBuilds.length > 0) {
+      throw new Error(`Build failed for: ${failedBuilds.join(', ')}`);
+    }
     
     // Create zip files
     await createZipFiles();

@@ -5,9 +5,13 @@ if (typeof browserAPI === 'undefined') {
 
 // Options page functionality
 document.addEventListener('DOMContentLoaded', async () => {
-  await loadSettings();
-  setupEventListeners();
-  checkForPendingPrompt();
+  try {
+    await loadSettings();
+    setupEventListeners();
+    checkForPendingPrompt();
+  } catch (error) {
+    console.error('Error initializing options page:', error);
+  }
 });
 
 async function loadSettings() {
@@ -36,8 +40,38 @@ async function loadSettings() {
 
 function setupEventListeners() {
   // Save settings
-  document.getElementById('saveSettings').addEventListener('click', saveSettings);
-  document.getElementById('cancelSettings').addEventListener('click', () => window.close());
+  const saveButton = document.getElementById('saveSettings');
+  if (saveButton) {
+    saveButton.addEventListener('click', async (e) => {
+      e.preventDefault();
+      await saveSettings();
+    });
+  } else {
+    console.error('Save settings button not found');
+  }
+  
+  // Cancel settings
+  const cancelButton = document.getElementById('cancelSettings');
+  if (cancelButton) {
+    cancelButton.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('Cancel button clicked');
+      try {
+        window.close();
+      } catch (error) {
+        // If window.close() fails, navigate back
+        console.warn('window.close() failed:', error);
+        if (window.history.length > 1) {
+          window.history.back();
+        } else {
+          // As a last resort, clear the tab
+          window.location.href = 'about:blank';
+        }
+      }
+    });
+  } else {
+    console.error('Cancel button not found');
+  }
 
   // Test connection
   document.getElementById('testConnection').addEventListener('click', testConnection);
@@ -65,6 +99,7 @@ function setupEventListeners() {
 }
 
 async function saveSettings() {
+  console.log('Saving settings...');
   const settings = {
     serverUrl: document.getElementById('serverUrl').value,
     apiToken: document.getElementById('apiToken').value,
@@ -78,14 +113,29 @@ async function saveSettings() {
 
   try {
     await browserAPI.storage.sync.set(settings);
+    console.log('Settings saved:', settings);
     showStatus('Settings saved successfully!', 'success');
     
     // Notify background script of settings change
-    browserAPI.runtime.sendMessage({ action: 'settingsUpdated' });
+    try {
+      await browserAPI.runtime.sendMessage({ action: 'settingsUpdated' });
+    } catch (msgError) {
+      // Background script might not be ready, but settings are still saved
+      console.warn('Could not notify background script:', msgError);
+    }
     
-    setTimeout(() => window.close(), 1500);
+    setTimeout(() => {
+      try {
+        window.close();
+      } catch (closeError) {
+        // If window.close() fails, try using the extension API
+        console.warn('window.close() failed, redirecting to popup');
+        browserAPI.runtime.openOptionsPage();
+      }
+    }, 1500);
   } catch (error) {
-    showStatus('Failed to save settings', 'error');
+    console.error('Failed to save settings:', error);
+    showStatus('Failed to save settings: ' + error.message, 'error');
   }
 }
 

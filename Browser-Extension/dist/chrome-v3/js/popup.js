@@ -12,8 +12,21 @@ window.browserAPI = api;
 let currentConversationId = null;
 let selectedCharacterId = null;
 let selectedPromptTemplate = null;
+let isOnline = navigator.onLine;
+let offlineQueue = [];
 
-// Smart Context Detection System
+// Lazy loading state
+let tabsLoaded = {
+  chat: false,
+  prompts: false,
+  characters: false,
+  media: false
+};
+
+/**
+ * Smart Context Detection System
+ * Detects the type of content on a webpage and suggests appropriate actions
+ */
 class SmartContextDetector {
   constructor() {
     this.videoPatterns = [
@@ -62,6 +75,13 @@ class SmartContextDetector {
     ];
   }
   
+  /**
+   * Detects the type of content based on URL, title, and page content
+   * @param {string} url - The URL to analyze
+   * @param {string} [title=''] - The page title
+   * @param {string} [pageContent=''] - The page content
+   * @returns {{type: string, confidence: number, suggestedAction: string, icon: string, description: string}}
+   */
   detectContentType(url, title = '', pageContent = '') {
     const urlLower = url.toLowerCase();
     const titleLower = title.toLowerCase();
@@ -255,7 +275,10 @@ class SmartContextDetector {
 // Initialize smart context detector
 const smartContext = new SmartContextDetector();
 
-// Toast notification system
+/**
+ * Toast notification system
+ * Manages popup notifications for user feedback
+ */
 class ToastManager {
   constructor() {
     this.container = null;
@@ -269,6 +292,14 @@ class ToastManager {
     }
   }
 
+  /**
+   * Shows a toast notification
+   * @param {string} message - The message to display
+   * @param {string} [type='info'] - The type of toast (info, success, error, warning)
+   * @param {string|null} [title=null] - Optional title for the toast
+   * @param {number} [duration=4000] - Duration in milliseconds (0 for persistent)
+   * @returns {HTMLElement} The toast element
+   */
   show(message, type = 'info', title = null, duration = 4000) {
     if (!this.container) return;
 
@@ -352,7 +383,9 @@ class ToastManager {
 
 const toast = new ToastManager();
 
-// Initialize popup
+/**
+ * Initialize popup when DOM is loaded
+ */
 document.addEventListener('DOMContentLoaded', async () => {
   console.log('DOMContentLoaded fired - popup.js is running');
   try {
@@ -365,11 +398,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+/**
+ * Initialize the popup interface
+ * Sets up connection status, smart context detection, and loads initial data
+ * @returns {Promise<void>}
+ */
 async function initializePopup() {
   console.log('Initializing popup...');
   
   // Initialize toast system
   toast.init();
+  
+  // Setup offline detection
+  setupOfflineDetection();
+  loadOfflineQueue();
   
   // Check connection status
   const isConnected = await apiClient.checkConnection();
@@ -385,15 +427,18 @@ async function initializePopup() {
   // Initialize enhanced search
   await enhancedSearch.initialize();
   
-  // Load initial data
-  if (isConnected) {
-    loadPrompts();
-    loadCharacters();
-    loadMediaList();
+  // Show connection status
+  if (isOnline && isConnected) {
     toast.success('Connected to TLDW Server', 'Connected');
+    // Data will be loaded lazily when tabs are clicked
+  } else if (!isOnline) {
+    toast.warning('Starting in offline mode. Some features may be limited.', 'Offline Mode');
   } else {
     toast.error('Failed to connect to TLDW Server. Check your settings.', 'Connection Failed');
   }
+  
+  // Mark chat tab as loaded since it's the default tab
+  tabsLoaded.chat = true;
 }
 
 function updateConnectionStatus(isConnected, statusInfo = null) {
@@ -479,7 +524,189 @@ async function retryConnection() {
 // Make updateConnectionStatus available globally for API client callback
 window.updateConnectionStatus = updateConnectionStatus;
 
-// Tab functionality
+/**
+ * Offline Mode Detection and Management
+ */
+function setupOfflineDetection() {
+  // Initial status
+  updateOfflineStatus(navigator.onLine);
+  
+  // Listen for online/offline events
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  
+  // Also check when window gains focus (in case events were missed)
+  window.addEventListener('focus', () => {
+    const wasOffline = !isOnline;
+    isOnline = navigator.onLine;
+    if (wasOffline && isOnline) {
+      handleOnline();
+    } else if (!wasOffline && !isOnline) {
+      handleOffline();
+    }
+  });
+}
+
+/**
+ * Handle when browser goes online
+ */
+function handleOnline() {
+  console.log('Browser is online');
+  isOnline = true;
+  updateOfflineStatus(true);
+  toast.success('Connection restored!', 'Back Online');
+  
+  // Process offline queue
+  if (offlineQueue.length > 0) {
+    processOfflineQueue();
+  }
+  
+  // Try to reconnect to server
+  retryConnection();
+}
+
+/**
+ * Handle when browser goes offline
+ */
+function handleOffline() {
+  console.log('Browser is offline');
+  isOnline = false;
+  updateOfflineStatus(false);
+  toast.warning('You are currently offline. Some features may be limited.', 'Offline Mode');
+}
+
+/**
+ * Update UI to reflect offline status
+ * @param {boolean} online - Whether the browser is online
+ */
+function updateOfflineStatus(online) {
+  const offlineIndicator = document.getElementById('offline-indicator');
+  if (!offlineIndicator) {
+    // Create offline indicator if it doesn't exist
+    const indicator = document.createElement('div');
+    indicator.id = 'offline-indicator';
+    indicator.className = 'offline-indicator';
+    indicator.innerHTML = `
+      <span class="offline-icon">⚠️</span>
+      <span class="offline-text">Offline Mode</span>
+    `;
+    indicator.style.cssText = `
+      position: fixed;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #f39c12;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 10000;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    `;
+    document.body.appendChild(indicator);
+  }
+  
+  const indicator = document.getElementById('offline-indicator');
+  indicator.style.display = online ? 'none' : 'flex';
+  
+  // Update all action buttons
+  const actionButtons = document.querySelectorAll('.action-button, .btn-primary');
+  actionButtons.forEach(button => {
+    if (!online && !button.classList.contains('offline-capable')) {
+      button.title = 'This action requires an internet connection';
+    } else {
+      button.title = '';
+    }
+  });
+}
+
+/**
+ * Add request to offline queue
+ * @param {Object} request - Request details to queue
+ */
+function queueOfflineRequest(request) {
+  offlineQueue.push({
+    ...request,
+    timestamp: Date.now(),
+    id: `offline-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  });
+  
+  // Store in localStorage for persistence
+  try {
+    localStorage.setItem('tldw-offline-queue', JSON.stringify(offlineQueue));
+  } catch (error) {
+    console.warn('Failed to save offline queue:', error);
+  }
+  
+  toast.info('Action saved for when you\'re back online', 'Queued');
+}
+
+/**
+ * Process queued requests when back online
+ */
+async function processOfflineQueue() {
+  if (offlineQueue.length === 0) return;
+  
+  const loadingToast = toast.loading(`Processing ${offlineQueue.length} queued actions...`);
+  let processed = 0;
+  let failed = 0;
+  
+  for (const request of offlineQueue) {
+    try {
+      switch (request.type) {
+        case 'chat':
+          await sendChatMessage(request.data.message, request.data.model);
+          break;
+        case 'media':
+          await processMediaUrl(request.data.url);
+          break;
+        // Add more request types as needed
+      }
+      processed++;
+    } catch (error) {
+      console.error('Failed to process queued request:', error);
+      failed++;
+    }
+  }
+  
+  // Clear the queue
+  offlineQueue = [];
+  localStorage.removeItem('tldw-offline-queue');
+  
+  toast.hide(loadingToast);
+  
+  if (failed === 0) {
+    toast.success(`Successfully processed ${processed} queued actions`);
+  } else {
+    toast.warning(`Processed ${processed} actions, ${failed} failed`);
+  }
+}
+
+/**
+ * Load offline queue from localStorage
+ */
+function loadOfflineQueue() {
+  try {
+    const stored = localStorage.getItem('tldw-offline-queue');
+    if (stored) {
+      offlineQueue = JSON.parse(stored);
+      // Filter out old requests (older than 24 hours)
+      const oneDayAgo = Date.now() - (24 * 60 * 60 * 1000);
+      offlineQueue = offlineQueue.filter(req => req.timestamp > oneDayAgo);
+    }
+  } catch (error) {
+    console.warn('Failed to load offline queue:', error);
+    offlineQueue = [];
+  }
+}
+
+/**
+ * Tab functionality with lazy loading
+ */
 function setupTabs() {
   const tabButtons = document.querySelectorAll('.tab-button');
   const tabPanes = document.querySelectorAll('.tab-pane');
@@ -487,7 +714,7 @@ function setupTabs() {
   console.log('Setting up tabs. Found buttons:', tabButtons.length, 'panes:', tabPanes.length);
   
   tabButtons.forEach(button => {
-    button.addEventListener('click', () => {
+    button.addEventListener('click', async () => {
       const targetTab = button.dataset.tab;
       console.log('Tab clicked:', targetTab);
       
@@ -499,12 +726,158 @@ function setupTabs() {
       const targetPane = document.getElementById(`${targetTab}-tab`);
       if (targetPane) {
         targetPane.classList.add('active');
+        
+        // Lazy load tab content if not already loaded
+        await loadTabContent(targetTab);
       } else {
         console.error('Tab pane not found:', `${targetTab}-tab`);
       }
     });
   });
 }
+
+/**
+ * Load content for a specific tab
+ * @param {string} tabName - The name of the tab to load
+ */
+async function loadTabContent(tabName) {
+  // Skip if already loaded or offline (except for chat which can work offline)
+  if (tabsLoaded[tabName] || (!isOnline && tabName !== 'chat')) {
+    return;
+  }
+  
+  // Skip if not connected to server (except for chat)
+  const isConnected = apiClient.getConnectionStatus().isConnected;
+  if (!isConnected && tabName !== 'chat') {
+    return;
+  }
+  
+  console.log(`Lazy loading content for ${tabName} tab`);
+  
+  switch (tabName) {
+    case 'chat':
+      // Chat is always available, mark as loaded
+      tabsLoaded.chat = true;
+      break;
+      
+    case 'prompts':
+      showTabLoading('prompts');
+      try {
+        await loadPrompts();
+        tabsLoaded.prompts = true;
+      } catch (error) {
+        console.error('Failed to load prompts:', error);
+        showTabError('prompts', 'Failed to load prompts. Please try again.');
+      }
+      hideTabLoading('prompts');
+      break;
+      
+    case 'characters':
+      showTabLoading('characters');
+      try {
+        await loadCharacters();
+        tabsLoaded.characters = true;
+      } catch (error) {
+        console.error('Failed to load characters:', error);
+        showTabError('characters', 'Failed to load characters. Please try again.');
+      }
+      hideTabLoading('characters');
+      break;
+      
+    case 'media':
+      showTabLoading('media');
+      try {
+        await loadMediaList();
+        tabsLoaded.media = true;
+      } catch (error) {
+        console.error('Failed to load media:', error);
+        showTabError('media', 'Failed to load media items. Please try again.');
+      }
+      hideTabLoading('media');
+      break;
+  }
+}
+
+/**
+ * Show loading indicator for a tab
+ * @param {string} tabName - The tab name
+ */
+function showTabLoading(tabName) {
+  const container = getTabContentContainer(tabName);
+  if (container) {
+    container.innerHTML = `
+      <div class="loading-container" style="text-align: center; padding: 40px;">
+        <div class="loading-spinner" style="
+          display: inline-block;
+          width: 40px;
+          height: 40px;
+          border: 4px solid #f3f3f3;
+          border-top: 4px solid #3498db;
+          border-radius: 50%;
+          animation: spin 1s linear infinite;
+        "></div>
+        <p style="margin-top: 16px; color: #666;">Loading ${tabName}...</p>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Hide loading indicator for a tab
+ * @param {string} tabName - The tab name
+ */
+function hideTabLoading(tabName) {
+  const container = getTabContentContainer(tabName);
+  if (container) {
+    const loadingContainer = container.querySelector('.loading-container');
+    if (loadingContainer) {
+      loadingContainer.remove();
+    }
+  }
+}
+
+/**
+ * Show error message in a tab
+ * @param {string} tabName - The tab name
+ * @param {string} message - Error message
+ */
+function showTabError(tabName, message) {
+  const container = getTabContentContainer(tabName);
+  if (container) {
+    container.innerHTML = `
+      <div class="error-container" style="text-align: center; padding: 40px;">
+        <p style="color: #e74c3c;">${message}</p>
+        <button class="btn btn-primary" onclick="retryTabLoad('${tabName}')" style="margin-top: 16px;">
+          Retry
+        </button>
+      </div>
+    `;
+  }
+}
+
+/**
+ * Get the content container for a tab
+ * @param {string} tabName - The tab name
+ * @returns {HTMLElement|null}
+ */
+function getTabContentContainer(tabName) {
+  const containerMap = {
+    prompts: 'promptsList',
+    characters: 'charactersList',
+    media: 'mediaList'
+  };
+  
+  return document.getElementById(containerMap[tabName]);
+}
+
+/**
+ * Retry loading a tab's content
+ * @param {string} tabName - The tab name
+ */
+window.retryTabLoad = async function(tabName) {
+  tabsLoaded[tabName] = false;
+  await loadTabContent(tabName);
+};
 
 // Event listeners
 function setupEventListeners() {
@@ -602,7 +975,11 @@ function setupEventListeners() {
   document.getElementById('connectionText').style.cursor = 'pointer';
 }
 
-// Chat functionality
+/**
+ * Send a chat message to the AI
+ * Handles message preparation, API call, and response display
+ * @returns {Promise<void>}
+ */
 async function sendChatMessage() {
   const input = document.getElementById('chatInput');
   const message = input.value.trim();
@@ -610,6 +987,18 @@ async function sendChatMessage() {
   
   if (!message || !model) {
     toast.warning('Please enter a message and select a model');
+    return;
+  }
+  
+  // Check if offline
+  if (!isOnline) {
+    queueOfflineRequest({
+      type: 'chat',
+      data: { message, model }
+    });
+    input.value = '';
+    addMessageToChat('user', message);
+    addMessageToChat('system', 'Message queued for sending when back online');
     return;
   }
   
@@ -663,12 +1052,27 @@ async function sendChatMessage() {
       progress.complete('Message sent successfully!');
     } else {
       progress.error('No response received from AI');
+      toast.error('No response received. Please try again or check your connection.');
     }
   } catch (error) {
     console.error('Chat error:', error);
-    addMessageToChat('system', `Error: ${error.message}`);
-    progress.error(`Chat failed: ${error.message}`);
-    toast.error(`Chat request failed: ${error.message}`);
+    let userMessage = 'Unable to send message. ';
+    
+    if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+      userMessage += 'Please check your internet connection.';
+    } else if (error.status === 401) {
+      userMessage += 'Authentication failed. Please check your API token in settings.';
+    } else if (error.status === 429) {
+      userMessage += 'Too many requests. Please wait a moment and try again.';
+    } else if (error.status >= 500) {
+      userMessage += 'Server error. Please try again later.';
+    } else {
+      userMessage += 'Please try again or contact support.';
+    }
+    
+    addMessageToChat('system', userMessage);
+    progress.error(userMessage);
+    toast.error(userMessage);
   }
 }
 
@@ -700,7 +1104,10 @@ async function loadPrompts() {
     displayPrompts(response.prompts);
   } catch (error) {
     console.error('Failed to load prompts:', error);
-    toast.error('Failed to load prompts from server');
+    const message = error.status === 401 
+      ? 'Unable to load prompts. Please check your API token in settings.'
+      : 'Unable to load prompts. Please check your connection and try again.';
+    toast.error(message);
   }
 }
 
@@ -1216,7 +1623,10 @@ async function loadCharacters() {
     updateCharacterSelect(characters);
   } catch (error) {
     console.error('Failed to load characters:', error);
-    toast.error('Failed to load characters from server');
+    const message = error.status === 401 
+      ? 'Unable to load characters. Please check your API token in settings.'
+      : 'Unable to load characters. Please check your connection and try again.';
+    toast.error(message);
   }
 }
 
@@ -1351,6 +1761,11 @@ class ProgressIndicator {
     const style = document.createElement('style');
     style.id = 'progress-css';
     style.textContent = `
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      
       .global-progress-container {
         position: fixed;
         top: 10px;
@@ -1682,10 +2097,28 @@ class ProgressIndicator {
 
 const progressIndicator = new ProgressIndicator();
 
+/**
+ * Process a media URL from user input
+ * Validates the URL and sends it to the server for processing
+ * @returns {Promise<void>}
+ */
 async function processMediaUrl() {
   const url = document.getElementById('mediaUrl').value.trim();
   if (!url) {
     toast.warning('Please enter a URL');
+    return;
+  }
+  
+  // Validate URL format
+  try {
+    const urlObj = new URL(url);
+    // Check if protocol is http or https
+    if (!['http:', 'https:'].includes(urlObj.protocol)) {
+      toast.warning('Please enter a valid HTTP or HTTPS URL');
+      return;
+    }
+  } catch (error) {
+    toast.warning('Please enter a valid URL (e.g., https://example.com)');
     return;
   }
   
@@ -1707,8 +2140,22 @@ async function processMediaUrl() {
     loadMediaList();
   } catch (error) {
     console.error('Processing failed:', error);
-    progress.error(`Failed to process: ${error.message}`);
-    toast.error(`Failed to process media: ${error.message}`);
+    let userMessage = 'Unable to process URL. ';
+    
+    if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
+      userMessage += 'Please check your internet connection.';
+    } else if (error.status === 401) {
+      userMessage += 'Please check your API token in settings.';
+    } else if (error.status === 413) {
+      userMessage += 'The content is too large to process.';
+    } else if (error.status === 429) {
+      userMessage += 'Too many requests. Please wait a moment and try again.';
+    } else {
+      userMessage += 'Please verify the URL is accessible and try again.';
+    }
+    
+    progress.error(userMessage);
+    toast.error(userMessage);
   }
 }
 
@@ -2367,6 +2814,18 @@ async function processCurrentUrl(endpoint) {
   try {
     const [tab] = await api.tabs.query({ active: true, currentWindow: true });
     if (!tab) throw new Error('No active tab found');
+    
+    // Validate URL before processing
+    try {
+      const urlObj = new URL(tab.url);
+      if (!['http:', 'https:'].includes(urlObj.protocol)) {
+        toast.warning('This type of URL cannot be processed');
+        return;
+      }
+    } catch (error) {
+      toast.error('Invalid URL in current tab');
+      return;
+    }
     
     const response = await apiClient.processUrl(tab.url, endpoint);
     toast.success(`Processing started for ${tab.title}`);
