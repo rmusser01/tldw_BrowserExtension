@@ -6,6 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a cross-browser extension for TLDW (Too Long; Didn't Watch) Server that provides AI chat integration with various LLM models. The extension supports Chrome (V2/V3), Firefox, and Edge browsers.
 
+## Recent Updates (2024)
+
+### Fixed Issues
+1. **Firefox Compatibility**: Added browser-specific settings with addon ID to fix storage API errors
+2. **CORS Errors**: Simplified API headers to prevent unnecessary preflight requests
+3. **Settings Page**: Fixed Save/Cancel button functionality with proper error handling
+4. **Build Process**: Improved error handling and validation in build script
+5. **API Client**: Fixed undefined variable references (this.retryConfig, this.cacheConfig)
+
 ## Essential Commands
 
 ### Build Commands
@@ -57,12 +66,18 @@ npm run test:integration # Integration tests only
 
 4. **API Client** (`js/utils/api.js`)
    - Centralized API communication layer
-   - Bearer token authentication
+   - Token-based authentication (uses `Token: Bearer <token>` header)
    - Endpoints: `/api/v1/chat/`, `/api/v1/prompts/`, `/api/v1/characters/`, `/api/v1/media/`
+   - Simplified headers to avoid CORS preflight issues
 
 5. **Configuration** (`js/utils/config.js`)
    - Manages user settings and API configuration
    - Encrypted storage for API tokens
+
+6. **Options Page** (`html/options.html`, `js/options.js`)
+   - Settings management interface
+   - Connection testing functionality
+   - Import/export settings capability
 
 ### Browser Compatibility Strategy
 
@@ -89,17 +104,35 @@ Key test utilities:
 
 ## Important Technical Considerations
 
-1. **API Communication**: All API calls go through the centralized client in `js/utils/api.js`. The base URL is configurable (default: http://localhost:8000).
+1. **API Communication**: 
+   - All API calls go through the centralized client in `js/utils/api.js`
+   - Uses `Token: Bearer <token>` header format for authentication
+   - Simplified headers to avoid CORS preflight requests
+   - Default base URL: http://localhost:8000
 
-2. **Cross-Browser Compatibility**: Always use `browser` namespace (polyfilled) instead of `chrome` for cross-browser support.
+2. **Cross-Browser Compatibility**: 
+   - Always use `browser` namespace (polyfilled) instead of `chrome`
+   - Firefox requires explicit addon ID in manifest for storage API
 
-3. **Storage**: Use browser.storage.local for persistent data. API tokens are stored encrypted.
+3. **Storage**: 
+   - Use browser.storage.sync for settings (cross-device sync)
+   - Use browser.storage.local for cache and temporary data
+   - API tokens stored in sync storage
 
-4. **Content Security**: The extension enforces strict CSP. No inline scripts or eval() usage.
+4. **Content Security**: 
+   - Extension enforces strict CSP
+   - No inline scripts or eval() usage
+   - All scripts loaded from extension package
 
-5. **Message Passing**: Content scripts communicate with background scripts via browser messaging API. Always validate message origins.
+5. **Message Passing**: 
+   - Content scripts communicate with background scripts via browser messaging API
+   - Always validate message origins
+   - Handle cases where background script might not be ready
 
-6. **Build Process**: The build script copies files and adjusts manifests. No transpilation or bundling is performed.
+6. **Build Process**: 
+   - Build script validates required files before building
+   - Handles errors gracefully and reports failed builds
+   - Creates zip files for distribution
 
 ## Running Single Tests
 
@@ -116,8 +149,28 @@ npm test -- --testNamePattern="should handle chat messages"
 
 ## Key Files to Understand
 
-- `/Browser-Extension/js/utils/api.js`: API client implementation
-- `/Browser-Extension/js/popup.js`: Main UI logic
-- `/Browser-Extension/build.js`: Build process for all browser versions
+- `/Browser-Extension/js/utils/api.js`: API client implementation (simplified headers, retry logic)
+- `/Browser-Extension/js/popup.js`: Main UI logic for chat interface
+- `/Browser-Extension/js/options.js`: Settings page functionality
+- `/Browser-Extension/build.js`: Build process with error handling
+- `/Browser-Extension/manifest.json`: Chrome V3 manifest
+- `/Browser-Extension/manifest-v2.json`: Firefox/Chrome V2 manifest (includes addon ID)
 - `/Browser-Extension/tests/setup.js`: Test configuration and mocks
 - `/Browser-Extension/Browser-Plugin-Design.md`: Detailed technical design document
+
+## Common Issues and Solutions
+
+1. **Firefox Storage API Error**: "The storage API will not work with a temporary addon ID"
+   - Solution: manifest-v2.json includes `browser_specific_settings` with addon ID
+
+2. **CORS Preflight Errors**: Network errors when making API requests
+   - Solution: Simplified API headers to only include essential headers
+   - Removed: X-Requested-With, User-Agent, Cache-Control, Access-Control-* headers
+
+3. **Settings Not Saving**: Save/Cancel buttons not working
+   - Solution: Added proper error handling and fallback mechanisms
+   - window.close() wrapped in try-catch with fallbacks
+
+4. **Build Failures**: Missing manifest files
+   - Solution: Created manifest.json and manifest-v2.json with proper configurations
+   - Build script validates files exist before building
