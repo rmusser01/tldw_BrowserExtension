@@ -1,3 +1,8 @@
+/**
+ * TLDW API Client
+ * Handles all communication with the TLDW Server API
+ * Includes retry logic, caching, and connection monitoring
+ */
 class TLDWApiClient {
   constructor() {
     this.configManager = window.configManager || null;
@@ -25,6 +30,10 @@ class TLDWApiClient {
     }
   }
 
+  /**
+   * Initialize the API client with configuration
+   * @returns {Promise<void>}
+   */
   async init() {
     try {
       // Use config manager if available, otherwise fallback to storage
@@ -85,6 +94,11 @@ class TLDWApiClient {
     return this.configManager ? this.configManager.getApiTimeout() : 30000;
   }
 
+  /**
+   * Check connection to the TLDW server
+   * @param {boolean} [withRetry=false] - Whether to retry on failure
+   * @returns {Promise<boolean>} True if connected, false otherwise
+   */
   async checkConnection(withRetry = false) {
     this.connectionStatus.lastChecked = new Date();
     
@@ -184,6 +198,13 @@ class TLDWApiClient {
     return `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }
 
+  /**
+   * Make an API request with retry logic and caching
+   * @param {string} endpoint - The API endpoint
+   * @param {Object} [options={}] - Request options (method, body, headers)
+   * @returns {Promise<*>} The API response
+   * @throws {Error} Enhanced error with category and user message
+   */
   async request(endpoint, options = {}) {
     if (!this.initialized) {
       await this.init();
