@@ -884,9 +884,9 @@ function setupEventListeners() {
   // Chat events
   document.getElementById('sendMessage').addEventListener('click', sendChatMessage);
   document.getElementById('chatInput').addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      sendChatMessage();
+    // Allow Enter for new lines, use Ctrl/Cmd+Enter to send
+    if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey) {
+      // Do nothing - allow default behavior for new lines
     }
   });
   document.getElementById('clearChat').addEventListener('click', clearChat);
@@ -973,6 +973,172 @@ function setupEventListeners() {
   
   // Add cursor pointer style for disconnected status
   document.getElementById('connectionText').style.cursor = 'pointer';
+  
+  // Setup keyboard shortcuts
+  setupKeyboardShortcuts();
+  
+  // Setup theme toggle
+  setupThemeToggle();
+}
+
+/**
+ * Setup theme toggle functionality
+ */
+function setupThemeToggle() {
+  const themeToggle = document.getElementById('themeToggle');
+  const themeIcon = themeToggle?.querySelector('.theme-icon');
+  
+  // Load saved theme preference
+  api.storage.sync.get(['theme'], (result) => {
+    const theme = result.theme || 'light';
+    document.documentElement.setAttribute('data-theme', theme);
+    if (themeIcon) {
+      themeIcon.textContent = theme === 'dark' ? '☀️' : '🌙';
+    }
+  });
+  
+  // Handle theme toggle click
+  themeToggle?.addEventListener('click', () => {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+    const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+    
+    // Update DOM
+    document.documentElement.setAttribute('data-theme', newTheme);
+    if (themeIcon) {
+      themeIcon.textContent = newTheme === 'dark' ? '☀️' : '🌙';
+    }
+    
+    // Save preference
+    api.storage.sync.set({ theme: newTheme });
+    
+    // Show toast
+    toast.info(`Switched to ${newTheme} mode`);
+  });
+}
+
+/**
+ * Setup global keyboard shortcuts
+ */
+function setupKeyboardShortcuts() {
+  document.addEventListener('keydown', (e) => {
+    const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+    const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+    
+    // Ctrl/Cmd + Enter - Send message (works from anywhere)
+    if (modifierKey && e.key === 'Enter') {
+      e.preventDefault();
+      const chatInput = document.getElementById('chatInput');
+      if (chatInput && chatInput.value.trim()) {
+        sendChatMessage();
+      }
+      return;
+    }
+    
+    // Ctrl/Cmd + 1/2/3/4 - Switch tabs
+    if (modifierKey && e.key >= '1' && e.key <= '4') {
+      e.preventDefault();
+      const tabIndex = parseInt(e.key) - 1;
+      const tabs = document.querySelectorAll('.tab-btn');
+      if (tabs[tabIndex]) {
+        tabs[tabIndex].click();
+      }
+      return;
+    }
+    
+    // Escape - Clear search/close modals/cancel operations
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      handleEscapeKey();
+      return;
+    }
+    
+    // Ctrl/Cmd + / - Focus search in current tab
+    if (modifierKey && e.key === '/') {
+      e.preventDefault();
+      focusCurrentTabSearch();
+      return;
+    }
+    
+    // Ctrl/Cmd + K - Quick command palette (future feature)
+    if (modifierKey && e.key === 'k') {
+      e.preventDefault();
+      toast.info('Command palette coming soon! 🚀');
+      return;
+    }
+  });
+}
+
+/**
+ * Handle escape key actions
+ */
+function handleEscapeKey() {
+  // Check for open modals first
+  const modals = document.querySelectorAll('.modal');
+  let modalClosed = false;
+  modals.forEach(modal => {
+    if (modal.style.display !== 'none') {
+      modal.style.display = 'none';
+      modalClosed = true;
+    }
+  });
+  
+  if (modalClosed) return;
+  
+  // Clear search inputs
+  const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
+  let searchCleared = false;
+  
+  switch (activeTab) {
+    case 'prompts':
+      const promptSearch = document.getElementById('promptSearch');
+      if (promptSearch && promptSearch.value) {
+        promptSearch.value = '';
+        searchPrompts();
+        searchCleared = true;
+      }
+      break;
+    case 'characters':
+      const characterSearch = document.getElementById('characterSearch');
+      if (characterSearch && characterSearch.value) {
+        characterSearch.value = '';
+        searchCharacters();
+        searchCleared = true;
+      }
+      break;
+    case 'media':
+      const mediaUrl = document.getElementById('mediaUrl');
+      if (mediaUrl && mediaUrl.value) {
+        mediaUrl.value = '';
+        searchCleared = true;
+      }
+      break;
+  }
+  
+  if (searchCleared) {
+    toast.info('Search cleared');
+  }
+}
+
+/**
+ * Focus search input in current tab
+ */
+function focusCurrentTabSearch() {
+  const activeTab = document.querySelector('.tab-btn.active').dataset.tab;
+  
+  switch (activeTab) {
+    case 'chat':
+      document.getElementById('chatInput')?.focus();
+      break;
+    case 'prompts':
+      document.getElementById('promptSearch')?.focus();
+      break;
+    case 'characters':
+      document.getElementById('characterSearch')?.focus();
+      break;
+    case 'media':
+      document.getElementById('mediaUrl')?.focus();
+      break;
+  }
 }
 
 /**
@@ -1542,13 +1708,211 @@ class EnhancedSearch {
 
 const enhancedSearch = new EnhancedSearch();
 
+/**
+ * Loading State Manager
+ * Manages loading states for various UI components
+ */
+class LoadingStateManager {
+  constructor() {
+    this.loadingStates = new Map();
+    this.initStyles();
+  }
+  
+  initStyles() {
+    if (document.getElementById('loading-state-styles')) return;
+    
+    const style = document.createElement('style');
+    style.id = 'loading-state-styles';
+    style.textContent = `
+      .btn[data-loading="true"] {
+        position: relative;
+        pointer-events: none;
+        opacity: 0.7;
+      }
+      
+      .btn[data-loading="true"]::after {
+        content: '';
+        position: absolute;
+        width: 16px;
+        height: 16px;
+        top: 50%;
+        left: 50%;
+        margin-left: -8px;
+        margin-top: -8px;
+        border: 2px solid #f3f3f3;
+        border-radius: 50%;
+        border-top-color: currentColor;
+        animation: spin 1s linear infinite;
+      }
+      
+      .list-container[data-loading="true"] {
+        position: relative;
+        min-height: 200px;
+      }
+      
+      .list-container[data-loading="true"]::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.8);
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+      
+      .list-container[data-loading="true"]::after {
+        content: '';
+        position: absolute;
+        width: 32px;
+        height: 32px;
+        top: 50%;
+        left: 50%;
+        margin-left: -16px;
+        margin-top: -16px;
+        border: 3px solid #f3f3f3;
+        border-radius: 50%;
+        border-top-color: #3498db;
+        animation: spin 1s linear infinite;
+        z-index: 2;
+      }
+      
+      .skeleton-item {
+        background: #f0f0f0;
+        border-radius: 4px;
+        margin-bottom: 8px;
+        padding: 12px;
+        animation: skeleton-pulse 1.5s ease-in-out infinite;
+      }
+      
+      .skeleton-title {
+        height: 20px;
+        width: 60%;
+        background: #e0e0e0;
+        border-radius: 4px;
+        margin-bottom: 8px;
+      }
+      
+      .skeleton-text {
+        height: 14px;
+        width: 100%;
+        background: #e0e0e0;
+        border-radius: 4px;
+        margin-bottom: 4px;
+      }
+      
+      .skeleton-text:last-child {
+        width: 80%;
+      }
+      
+      @keyframes skeleton-pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.4; }
+        100% { opacity: 1; }
+      }
+      
+      .inline-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: #666;
+        font-size: 13px;
+      }
+      
+      .inline-loading .loading-spinner {
+        width: 14px;
+        height: 14px;
+        border-width: 2px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+  
+  setButtonLoading(buttonId, isLoading, loadingText) {
+    const button = document.getElementById(buttonId);
+    if (!button) return;
+    
+    if (isLoading) {
+      this.loadingStates.set(buttonId, {
+        originalText: button.textContent,
+        originalDisabled: button.disabled
+      });
+      
+      button.setAttribute('data-loading', 'true');
+      button.disabled = true;
+      if (loadingText) {
+        button.textContent = loadingText;
+      }
+    } else {
+      const state = this.loadingStates.get(buttonId);
+      if (state) {
+        button.removeAttribute('data-loading');
+        button.disabled = state.originalDisabled;
+        button.textContent = state.originalText;
+        this.loadingStates.delete(buttonId);
+      }
+    }
+  }
+  
+  setListLoading(containerId, isLoading) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    
+    if (isLoading) {
+      container.setAttribute('data-loading', 'true');
+      // Show skeleton items
+      const skeletonHTML = Array(3).fill('').map(() => `
+        <div class="skeleton-item">
+          <div class="skeleton-title"></div>
+          <div class="skeleton-text"></div>
+          <div class="skeleton-text"></div>
+        </div>
+      `).join('');
+      container.innerHTML = skeletonHTML;
+    } else {
+      container.removeAttribute('data-loading');
+    }
+  }
+  
+  showInlineLoading(elementId, message = 'Loading...') {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+    
+    const loadingEl = document.createElement('div');
+    loadingEl.className = 'inline-loading';
+    loadingEl.innerHTML = `<span class="loading-spinner"></span>${message}`;
+    
+    element.appendChild(loadingEl);
+    return loadingEl;
+  }
+  
+  hideInlineLoading(loadingElement) {
+    if (loadingElement && loadingElement.parentNode) {
+      loadingElement.remove();
+    }
+  }
+}
+
+const loadingManager = new LoadingStateManager();
+
 async function searchPrompts() {
   const query = document.getElementById('promptSearch').value.trim();
-  await enhancedSearch.performSearch('prompts', query);
+  loadingManager.setButtonLoading('searchPromptsBtn', true);
+  loadingManager.setListLoading('promptsList', true);
+  
+  try {
+    await enhancedSearch.performSearch('prompts', query);
+  } finally {
+    loadingManager.setButtonLoading('searchPromptsBtn', false);
+  }
 }
 
 function displayPrompts(prompts) {
   const container = document.getElementById('promptsList');
+  loadingManager.setListLoading('promptsList', false);
   container.innerHTML = '';
   
   if (!prompts || prompts.length === 0) {
@@ -1632,11 +1996,19 @@ async function loadCharacters() {
 
 async function searchCharacters() {
   const query = document.getElementById('characterSearch').value.trim();
-  await enhancedSearch.performSearch('characters', query);
+  loadingManager.setButtonLoading('searchCharactersBtn', true);
+  loadingManager.setListLoading('charactersList', true);
+  
+  try {
+    await enhancedSearch.performSearch('characters', query);
+  } finally {
+    loadingManager.setButtonLoading('searchCharactersBtn', false);
+  }
 }
 
 function displayCharacters(characters) {
   const container = document.getElementById('charactersList');
+  loadingManager.setListLoading('charactersList', false);
   container.innerHTML = '';
   
   if (!characters || characters.length === 0) {

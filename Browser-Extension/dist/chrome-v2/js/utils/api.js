@@ -143,8 +143,8 @@ class TLDWApiClient {
     
     // Add API token if available
     if (this.apiToken) {
-      // Use Token header as per TLDW API spec
-      headers['Token'] = `Bearer ${this.apiToken}`;
+      // Use standard Authorization header for Bearer token
+      headers['Authorization'] = `Bearer ${this.apiToken}`;
     }
     
     return headers;
@@ -648,7 +648,7 @@ class TLDWApiClient {
     const response = await fetch(`${this.baseUrl}/api/v1/characters/import`, {
       method: 'POST',
       headers: {
-        'Token': `Bearer ${this.apiToken}`
+        'Authorization': `Bearer ${this.apiToken}`
       },
       body: formData
     });
@@ -708,7 +708,7 @@ class TLDWApiClient {
     const response = await fetch(`${this.baseUrl}/api/v1/media/${endpoint}`, {
       method: 'POST',
       headers: {
-        'Token': `Bearer ${this.apiToken}`
+        'Authorization': `Bearer ${this.apiToken}`
       },
       body: formData
     });
