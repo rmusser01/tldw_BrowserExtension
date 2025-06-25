@@ -128,7 +128,7 @@ async function handleProcessAsMedia(info, tab) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Token': `Bearer ${config.apiToken || ''}`
+          'Authorization': `Bearer ${config.apiToken || ''}`
         },
         body: JSON.stringify({
           url: url,
@@ -220,7 +220,7 @@ async function handleApiRequest(endpoint, options) {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'Token': `Bearer ${apiToken}`,
+      'Authorization': `Bearer ${apiToken}`,
       ...options.headers
     }
   });
@@ -647,7 +647,7 @@ function scheduleConnectionCheck(delay = 30000) {
       const response = await fetch(`${config.serverUrl || 'http://localhost:8000'}/api/v1/media/`, {
         method: 'GET',
         headers: {
-          'Token': `Bearer ${config.apiToken || ''}`
+          'Authorization': `Bearer ${config.apiToken || ''}`
         },
         timeout: 10000
       });
