@@ -477,6 +477,131 @@ footer a:hover {
   color: #95a5a6;
 }
 
+/* Chat Toolbar */
+.chat-toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.chat-toolbar .btn-sm {
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+/* Chat Search Container */
+.chat-search-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: var(--bg-primary);
+  z-index: 100;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.chat-search-container .search-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.chat-search-container h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.chat-search-container .close-btn {
+  background: none;
+  border: none;
+  font-size: 20px;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 4px 8px;
+}
+
+.chat-search-container .close-btn:hover {
+  color: var(--text-primary);
+}
+
+.search-filters {
+  margin: 12px 0;
+  display: flex;
+  gap: 16px;
+}
+
+.search-filters label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.chat-search-results {
+  margin-top: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Chat Search Result Item */
+.chat-result-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.chat-result-item:hover {
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.chat-result-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.chat-result-title {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.chat-result-date {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.chat-result-preview {
+  font-size: 13px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.chat-result-preview .highlight {
+  background: var(--accent-warning);
+  color: var(--text-primary);
+  padding: 0 2px;
+  border-radius: 2px;
+}
+
 /* Actions */
 .prompt-actions,
 .character-actions {

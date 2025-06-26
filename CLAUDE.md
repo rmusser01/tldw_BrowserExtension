@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a cross-browser extension for TLDW (Too Long; Didn't Watch) Server that provides AI chat integration with various LLM models. The extension supports Chrome (V2/V3), Firefox, and Edge browsers.
 
+### Key Features
+- **AI Chat Integration**: Support for multiple LLM models (GPT-4, GPT-3.5, Claude 3)
+- **Smart Context Detection**: Automatically detects content type (video, audio, article, document) and suggests appropriate actions
+- **Character Support**: Select and use different AI personas/characters
+- **Prompt Templates**: Pre-defined and custom prompts for common tasks
+- **Media Processing**: Process videos, audio, PDFs, and other documents
+- **Batch Operations**: Process all tabs or selected tabs at once
+- **Dark Mode**: Theme switching support with CSS variables
+- **Keyboard Shortcuts**: Comprehensive keyboard navigation (Ctrl+Enter to send, Esc to cancel, etc.)
+- **Loading States**: Visual feedback for all async operations
+- **Chat History & Search**: Full conversation history with search functionality
+- **Offline Queue**: Messages queued when offline, sent when connection restored
+
 ## Recent Updates (2024)
 
 ### Fixed Issues
@@ -54,6 +67,9 @@ npm run test:integration # Integration tests only
    - Main user interface for chat interactions
    - Model selection and conversation management
    - Character/prompt template selection
+   - Dark mode toggle in header
+   - Chat toolbar with History/Search/Export buttons
+   - Enhanced search functionality for prompts and characters
 
 2. **Content Script** (`js/content.js`)
    - Handles text selection and context menu integration
@@ -78,6 +94,28 @@ npm run test:integration # Integration tests only
    - Settings management interface
    - Connection testing functionality
    - Import/export settings capability
+
+### Manager Classes (in `js/popup.js`)
+
+1. **SmartContextDetector**
+   - Detects content type from URL patterns
+   - Supports video, audio, article, and document detection
+   - Suggests appropriate actions based on content
+   - Pattern matching for major platforms (YouTube, Spotify, Medium, etc.)
+
+2. **LoadingStateManager**
+   - Centralized loading state management
+   - Visual feedback for async operations
+   - Prevents duplicate operations
+   - Button state management during loading
+   - Maintains loading indicators across the UI
+
+3. **ChatHistoryManager**
+   - Stores conversation history (max 50 conversations)
+   - Search functionality with query highlighting
+   - Conversation export (JSON and Markdown formats)
+   - Automatic cleanup of old conversations
+   - Persistence using browser.storage.local with key 'tldw-chat-history'
 
 ### Browser Compatibility Strategy
 
@@ -118,6 +156,8 @@ Key test utilities:
    - Use browser.storage.sync for settings (cross-device sync)
    - Use browser.storage.local for cache and temporary data
    - API tokens stored in sync storage
+   - Chat history stored in local storage with key 'tldw-chat-history'
+   - Theme preference stored in sync storage
 
 4. **Content Security**: 
    - Extension enforces strict CSP
@@ -133,6 +173,32 @@ Key test utilities:
    - Build script validates required files before building
    - Handles errors gracefully and reports failed builds
    - Creates zip files for distribution
+
+7. **Theme System**:
+   - Uses CSS variables for theming (see `css/popup.css`)
+   - Light/dark mode toggle with smooth transitions
+   - Theme preference persisted in browser.storage.sync
+   - CSS variables include colors, shadows, and spacing
+
+8. **Keyboard Shortcuts**:
+   - `Ctrl/Cmd + Enter`: Send message
+   - `Esc`: Close modals/cancel operations
+   - `Ctrl/Cmd + K`: Open search
+   - `Ctrl/Cmd + /`: Focus chat input
+   - `Tab`: Navigate between UI elements
+   - All shortcuts respect platform conventions (Cmd on Mac, Ctrl elsewhere)
+
+9. **Loading States**:
+   - All async operations use LoadingStateManager
+   - Visual feedback with spinners and disabled states
+   - Prevents user from triggering duplicate operations
+   - Consistent loading UI across all features
+
+10. **Error Handling**:
+   - Comprehensive error handling with user-friendly toast notifications
+   - Network errors queued for retry when offline
+   - Validation errors shown inline
+   - API errors displayed with actionable messages
 
 ## Running Single Tests
 
@@ -150,11 +216,13 @@ npm test -- --testNamePattern="should handle chat messages"
 ## Key Files to Understand
 
 - `/Browser-Extension/js/utils/api.js`: API client implementation (simplified headers, retry logic)
-- `/Browser-Extension/js/popup.js`: Main UI logic for chat interface
+- `/Browser-Extension/js/popup.js`: Main UI logic (26k+ tokens) - contains all manager classes and features
 - `/Browser-Extension/js/options.js`: Settings page functionality
 - `/Browser-Extension/build.js`: Build process with error handling
 - `/Browser-Extension/manifest.json`: Chrome V3 manifest
 - `/Browser-Extension/manifest-v2.json`: Firefox/Chrome V2 manifest (includes addon ID)
+- `/Browser-Extension/css/popup.css`: Styles with CSS variables for theming (1200+ lines)
+- `/Browser-Extension/html/popup.html`: Main popup HTML with chat UI, search overlay, and modals
 - `/Browser-Extension/tests/setup.js`: Test configuration and mocks
 - `/Browser-Extension/Browser-Plugin-Design.md`: Detailed technical design document
 

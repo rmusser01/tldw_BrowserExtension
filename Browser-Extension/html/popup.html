@@ -44,6 +44,39 @@
             </select>
           </div>
           
+          <div class="chat-toolbar">
+            <button id="viewChatHistory" class="btn btn-secondary btn-sm" title="View chat history">
+              📋 History
+            </button>
+            <button id="searchChats" class="btn btn-secondary btn-sm" title="Search chats">
+              🔍 Search
+            </button>
+            <button id="exportChat" class="btn btn-secondary btn-sm" title="Export current chat">
+              💾 Export
+            </button>
+          </div>
+          
+          <div class="chat-search-container" id="chatSearchContainer" style="display: none;">
+            <div class="search-header">
+              <h3>Search Chat History</h3>
+              <button id="closeChatSearch" class="close-btn">✕</button>
+            </div>
+            <div class="input-group">
+              <input type="text" id="chatSearchInput" class="form-control" placeholder="Search messages, conversations...">
+              <button id="performChatSearch" class="btn btn-primary">Search</button>
+            </div>
+            <div class="search-filters">
+              <label>
+                <input type="checkbox" id="searchCurrentOnly"> Current chat only
+              </label>
+              <label>
+                <input type="checkbox" id="searchByDate"> Filter by date
+              </label>
+            </div>
+            <div class="search-results-info" id="chatSearchInfo"></div>
+            <div id="chatSearchResults" class="chat-search-results"></div>
+          </div>
+          
           <div id="chatMessages" class="chat-messages"></div>
           
           <div class="chat-input-container">

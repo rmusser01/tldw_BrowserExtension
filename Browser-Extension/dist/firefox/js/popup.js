@@ -974,11 +974,203 @@ function setupEventListeners() {
   // Add cursor pointer style for disconnected status
   document.getElementById('connectionText').style.cursor = 'pointer';
   
+  // Chat search and history events
+  document.getElementById('searchChats')?.addEventListener('click', showChatSearch);
+  document.getElementById('viewChatHistory')?.addEventListener('click', showChatHistory);
+  document.getElementById('exportChat')?.addEventListener('click', exportCurrentChat);
+  document.getElementById('closeChatSearch')?.addEventListener('click', hideChatSearch);
+  document.getElementById('performChatSearch')?.addEventListener('click', performChatSearch);
+  document.getElementById('chatSearchInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') performChatSearch();
+  });
+  
   // Setup keyboard shortcuts
   setupKeyboardShortcuts();
   
   // Setup theme toggle
   setupThemeToggle();
+}
+
+/**
+ * Show chat search interface
+ */
+function showChatSearch() {
+  const container = document.getElementById('chatSearchContainer');
+  if (container) {
+    container.style.display = 'block';
+    document.getElementById('chatSearchInput')?.focus();
+  }
+}
+
+/**
+ * Hide chat search interface
+ */
+function hideChatSearch() {
+  const container = document.getElementById('chatSearchContainer');
+  if (container) {
+    container.style.display = 'none';
+    document.getElementById('chatSearchResults').innerHTML = '';
+    document.getElementById('chatSearchInput').value = '';
+  }
+}
+
+/**
+ * Perform chat search
+ */
+function performChatSearch() {
+  const query = document.getElementById('chatSearchInput')?.value.trim();
+  if (!query) {
+    toast.warning('Please enter a search term');
+    return;
+  }
+  
+  const currentOnly = document.getElementById('searchCurrentOnly')?.checked;
+  const results = chatHistory.searchConversations(query, currentOnly);
+  
+  displayChatSearchResults(results, query);
+}
+
+/**
+ * Display chat search results
+ */
+function displayChatSearchResults(results, query) {
+  const container = document.getElementById('chatSearchResults');
+  const info = document.getElementById('chatSearchInfo');
+  
+  if (!container || !info) return;
+  
+  container.innerHTML = '';
+  
+  if (results.length === 0) {
+    info.textContent = 'No results found';
+    return;
+  }
+  
+  info.textContent = `Found ${results.length} conversation${results.length !== 1 ? 's' : ''} matching "${query}"`;
+  
+  results.forEach(result => {
+    const item = createChatResultItem(result);
+    container.appendChild(item);
+  });
+}
+
+/**
+ * Create chat result item element
+ */
+function createChatResultItem(result) {
+  const div = document.createElement('div');
+  div.className = 'chat-result-item';
+  
+  const header = document.createElement('div');
+  header.className = 'chat-result-header';
+  
+  const title = document.createElement('div');
+  title.className = 'chat-result-title';
+  title.textContent = result.conversation.title;
+  
+  const date = document.createElement('div');
+  date.className = 'chat-result-date';
+  date.textContent = new Date(result.conversation.updatedAt).toLocaleString();
+  
+  header.appendChild(title);
+  header.appendChild(date);
+  
+  const preview = document.createElement('div');
+  preview.className = 'chat-result-preview';
+  
+  if (result.matchedMessages.length > 0) {
+    preview.innerHTML = result.matchedMessages[0].excerpt;
+  } else {
+    preview.textContent = result.conversation.messages[0]?.content.substring(0, 100) + '...' || 'No messages';
+  }
+  
+  div.appendChild(header);
+  div.appendChild(preview);
+  
+  div.addEventListener('click', () => {
+    loadChatConversation(result.conversation.id);
+    hideChatSearch();
+  });
+  
+  return div;
+}
+
+/**
+ * Load a chat conversation
+ */
+function loadChatConversation(conversationId) {
+  const conversation = chatHistory.loadConversation(conversationId);
+  if (!conversation) {
+    toast.error('Conversation not found');
+    return;
+  }
+  
+  // Clear current chat
+  const messagesContainer = document.getElementById('chatMessages');
+  messagesContainer.innerHTML = '';
+  
+  // Load conversation messages
+  conversation.messages.forEach(message => {
+    addMessageToChat(message.role, message.content, false);
+  });
+  
+  // Update model and character selection if available
+  if (conversation.model) {
+    document.getElementById('modelSelect').value = conversation.model;
+  }
+  if (conversation.characterId) {
+    document.getElementById('characterSelect').value = conversation.characterId;
+  }
+  
+  toast.success('Conversation loaded');
+}
+
+/**
+ * Show chat history
+ */
+function showChatHistory() {
+  const results = chatHistory.conversations.map(conv => ({
+    conversation: conv,
+    matchedMessages: [],
+    relevanceScore: 0
+  })).reverse(); // Show newest first
+  
+  displayChatSearchResults(results, '');
+  showChatSearch();
+  
+  document.getElementById('chatSearchInfo').textContent = `${results.length} conversation${results.length !== 1 ? 's' : ''} in history`;
+}
+
+/**
+ * Export current chat
+ */
+function exportCurrentChat() {
+  const markdown = chatHistory.exportConversation();
+  if (!markdown) {
+    toast.warning('No conversation to export');
+    return;
+  }
+  
+  const blob = new Blob([markdown], { type: 'text/markdown' });
+  const url = URL.createObjectURL(blob);
+  const filename = `chat-${new Date().toISOString().split('T')[0]}.md`;
+  
+  if (api.downloads) {
+    api.downloads.download({
+      url: url,
+      filename: filename,
+      saveAs: true
+    });
+  } else {
+    // Fallback for browsers without downloads API
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+  
+  toast.success('Chat exported');
 }
 
 /**
@@ -1072,7 +1264,14 @@ function setupKeyboardShortcuts() {
  * Handle escape key actions
  */
 function handleEscapeKey() {
-  // Check for open modals first
+  // Check for chat search first
+  const chatSearchContainer = document.getElementById('chatSearchContainer');
+  if (chatSearchContainer && chatSearchContainer.style.display !== 'none') {
+    hideChatSearch();
+    return;
+  }
+  
+  // Check for open modals
   const modals = document.querySelectorAll('.modal');
   let modalClosed = false;
   modals.forEach(modal => {
@@ -1242,7 +1441,7 @@ async function sendChatMessage() {
   }
 }
 
-function addMessageToChat(role, content) {
+function addMessageToChat(role, content, saveToHistory = true) {
   const messagesContainer = document.getElementById('chatMessages');
   const template = document.getElementById('message-template').content.cloneNode(true);
   
@@ -1256,11 +1455,18 @@ function addMessageToChat(role, content) {
   
   messagesContainer.appendChild(messageDiv);
   messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  
+  // Save to chat history
+  if (saveToHistory) {
+    chatHistory.addMessage(role, content);
+  }
 }
 
 function clearChat() {
   document.getElementById('chatMessages').innerHTML = '';
   currentConversationId = null;
+  chatHistory.startNewConversation();
+  toast.info('Started new conversation');
 }
 
 // Prompts functionality
@@ -1897,6 +2103,172 @@ class LoadingStateManager {
 }
 
 const loadingManager = new LoadingStateManager();
+
+/**
+ * Chat History Manager
+ * Manages chat history storage, search, and retrieval
+ */
+class ChatHistoryManager {
+  constructor() {
+    this.conversations = [];
+    this.currentConversation = null;
+    this.storageKey = 'tldw-chat-history';
+    this.maxConversations = 50;
+    this.loadHistory();
+  }
+  
+  async loadHistory() {
+    try {
+      const result = await api.storage.local.get([this.storageKey]);
+      if (result[this.storageKey]) {
+        this.conversations = result[this.storageKey];
+      }
+    } catch (error) {
+      console.error('Failed to load chat history:', error);
+    }
+  }
+  
+  async saveHistory() {
+    try {
+      // Keep only the most recent conversations
+      if (this.conversations.length > this.maxConversations) {
+        this.conversations = this.conversations.slice(-this.maxConversations);
+      }
+      
+      await api.storage.local.set({
+        [this.storageKey]: this.conversations
+      });
+    } catch (error) {
+      console.error('Failed to save chat history:', error);
+    }
+  }
+  
+  startNewConversation(title = null) {
+    this.currentConversation = {
+      id: `conv_${Date.now()}`,
+      title: title || `Chat ${new Date().toLocaleString()}`,
+      messages: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      model: document.getElementById('modelSelect')?.value || '',
+      characterId: selectedCharacterId
+    };
+    this.conversations.push(this.currentConversation);
+    return this.currentConversation;
+  }
+  
+  addMessage(role, content) {
+    if (!this.currentConversation) {
+      this.startNewConversation();
+    }
+    
+    const message = {
+      role,
+      content,
+      timestamp: new Date().toISOString()
+    };
+    
+    this.currentConversation.messages.push(message);
+    this.currentConversation.updatedAt = new Date().toISOString();
+    
+    // Update title if it's the first user message
+    if (role === 'user' && this.currentConversation.messages.filter(m => m.role === 'user').length === 1) {
+      this.currentConversation.title = content.substring(0, 50) + (content.length > 50 ? '...' : '');
+    }
+    
+    this.saveHistory();
+  }
+  
+  searchConversations(query, currentOnly = false) {
+    const searchTerm = query.toLowerCase();
+    let conversationsToSearch = currentOnly && this.currentConversation 
+      ? [this.currentConversation] 
+      : this.conversations;
+    
+    const results = [];
+    
+    conversationsToSearch.forEach(conversation => {
+      const matchedMessages = [];
+      
+      conversation.messages.forEach((message, index) => {
+        if (message.content.toLowerCase().includes(searchTerm)) {
+          matchedMessages.push({
+            ...message,
+            messageIndex: index,
+            excerpt: this.getExcerpt(message.content, searchTerm)
+          });
+        }
+      });
+      
+      if (matchedMessages.length > 0 || conversation.title.toLowerCase().includes(searchTerm)) {
+        results.push({
+          conversation,
+          matchedMessages,
+          relevanceScore: matchedMessages.length + (conversation.title.toLowerCase().includes(searchTerm) ? 5 : 0)
+        });
+      }
+    });
+    
+    // Sort by relevance
+    return results.sort((a, b) => b.relevanceScore - a.relevanceScore);
+  }
+  
+  getExcerpt(content, searchTerm) {
+    const index = content.toLowerCase().indexOf(searchTerm.toLowerCase());
+    const start = Math.max(0, index - 40);
+    const end = Math.min(content.length, index + searchTerm.length + 40);
+    let excerpt = content.substring(start, end);
+    
+    if (start > 0) excerpt = '...' + excerpt;
+    if (end < content.length) excerpt += '...';
+    
+    // Highlight the search term
+    const regex = new RegExp(`(${searchTerm})`, 'gi');
+    excerpt = excerpt.replace(regex, '<span class="highlight">$1</span>');
+    
+    return excerpt;
+  }
+  
+  loadConversation(conversationId) {
+    const conversation = this.conversations.find(c => c.id === conversationId);
+    if (conversation) {
+      this.currentConversation = conversation;
+      return conversation;
+    }
+    return null;
+  }
+  
+  deleteConversation(conversationId) {
+    this.conversations = this.conversations.filter(c => c.id !== conversationId);
+    if (this.currentConversation?.id === conversationId) {
+      this.currentConversation = null;
+    }
+    this.saveHistory();
+  }
+  
+  exportConversation(conversationId = null) {
+    const conversation = conversationId 
+      ? this.conversations.find(c => c.id === conversationId)
+      : this.currentConversation;
+      
+    if (!conversation) return null;
+    
+    let markdown = `# ${conversation.title}\n\n`;
+    markdown += `**Date**: ${new Date(conversation.createdAt).toLocaleString()}\n`;
+    markdown += `**Model**: ${conversation.model}\n\n`;
+    markdown += `---\n\n`;
+    
+    conversation.messages.forEach(message => {
+      const role = message.role.charAt(0).toUpperCase() + message.role.slice(1);
+      markdown += `### ${role}\n`;
+      markdown += `${message.content}\n\n`;
+    });
+    
+    return markdown;
+  }
+}
+
+const chatHistory = new ChatHistoryManager();
 
 async function searchPrompts() {
   const query = document.getElementById('promptSearch').value.trim();
